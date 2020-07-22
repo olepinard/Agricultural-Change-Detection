@@ -14,6 +14,35 @@ import make_gif as gif
 
 gdal.UseExceptions()
 
+date = '2018%%'
+TOAR_match = '_3B_AnalyticMS_TOAR_imperial.tif'
+SR_match = '_3B_AnalyticMS_SR_imperial.tif'
+HLS_match = '30_%_imperial_1.tif'
+CESTEM_match = '_cestem_sr_gapfree3_imperial.tif'
+bucket = 'octave_study'
+img_type = "SR"
+list_dump = "scene_list.txt"
+aoi = "imperial_large"
+ndvi_stack = True
+gapfill =True
+change_stack = True
+classified_stack = True
+green_up = True
+change_name = "green_up"  #green up = 1/harvest = 2
+change_index = 1
+make_gif = True
+vm = True
+sub_img = False
+start_y = 0
+y_off = 1000
+start_x = 0
+x_off = 1000
+classify_threshold = 20     #ndvi threshold for classification
+time_change = 3             #number of day with change in a direction
+polygonize = 30             #how many files to split into
+noise_days = 5              #average the change to loose noise
+change_days = 7             #time window being considered for classification
+
 
 '''
 This function gets called in order to download the required files in order to
@@ -545,103 +574,4 @@ def read_and_save(match):
     print('------ The process took '+ str(((time.time() - start_time)/60))+' minutes ------' )
 
 
-
-
-
-
-
-
-
-date = '2018%%'
-TOAR_match = '_3B_AnalyticMS_TOAR_imperial.tif'
-SR_match = '_3B_AnalyticMS_SR_imperial.tif'
-HLS_match = '30_%_imperial_1.tif'
-CESTEM_match = '_cestem_sr_gapfree3_imperial.tif'
-bucket = 'octave_study'
-img_type = "SR"
-list_dump = "scene_list.txt"
-aoi = "imperial_large"
-ndvi_stack = True
-gapfill =True
-change_stack = True
-classified_stack = True
-green_up = True
-change_name = "green_up"  #green up = 1/harvest = 2
-change_index = 1
-make_gif = True
-vm = True
-sub_img = False
-start_y = 0
-y_off = 1000
-start_x = 0
-x_off = 1000
-classify_threshold = 20     #ndvi threshold for classification
-time_change = 3             #number of day with change in a direction
-polygonize = 30             #how many files to split into
-noise_days = 5              #average the change to loose noise
-change_days = 7             #time window being considered for classification
-
 read_and_save(SR_match)
-
-
-
-
-
-'''
-date = '2018%%'
-TOAR_match = '_3B_AnalyticMS_TOAR_imperial.tif'
-SR_match = '_3B_AnalyticMS_SR_imperial.tif'
-CESTEM_match = '_cestem_sr_gapfree2_imperial.tif'
-bucket = 'cestem_farming'
-img_type = "CESTEM"
-list_dump = "scene_list.txt"
-aoi = "year_large_farming"
-ndvi_stack = False
-change_stack = True
-classified_stack = True
-green_up = True
-change_name = "green_up"  #green up = 1/harvest = 2
-change_index = 1
-make_gif = True
-vm = True
-sub_img = False
-start_y = 1400
-y_off = 1000
-start_x = 900
-x_off = 1000
-classify_threshold = 20
-polygonize = 20
-noise_days = 4
-change_days = 3
-
-
-
-
-
-date = '2018%%'
-TOAR_match = '_3B_AnalyticMS_TOAR_imperial.tif'
-SR_match = '_3B_AnalyticMS_SR_imperial.tif'
-CESTEM_match = '_cestem_sr_gapfree2_arable_ne_aoi2.tif'
-bucket = 'cestem_data_packet'
-img_type = "CESTEM"
-list_dump = "scene_list.txt"
-aoi = "nebraska"
-ndvi_stack = False
-change_stack = False
-classified_stack = False
-green_up = True
-change_name = "green_up"  #green up = 1/harvest = 2
-change_index = 1
-make_gif = True
-vm = True
-sub_img = False
-start_y = 0
-y_off = 1361
-start_x = 0
-x_off = 1011
-classify_threshold = 10
-time_change = 5
-polygonize = 5
-noise_days = 5
-change_days = 10
-'''
