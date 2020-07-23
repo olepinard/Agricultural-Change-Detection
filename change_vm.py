@@ -2,9 +2,6 @@ import os
 import fnmatch
 import numpy as np
 from argparse import ArgumentDefaultsHelpFormatter
-from planet_common.raster import plimage
-from sklearn.cluster import KMeans
-from planet_common.client import storage
 import ancillary_vm as ask
 import math
 import time
@@ -14,34 +11,32 @@ import make_gif as gif
 
 gdal.UseExceptions()
 
-date = '2018%%'
-TOAR_match = '_3B_AnalyticMS_TOAR_imperial.tif'
-SR_match = '_3B_AnalyticMS_SR_imperial.tif'
-HLS_match = '30_%_imperial_1.tif'
-CESTEM_match = '_cestem_sr_gapfree3_imperial.tif'
-bucket = 'octave_study'
-img_type = "SR"
-list_dump = "scene_list.txt"
-aoi = "imperial_large"
-ndvi_stack = True
-gapfill =True
-change_stack = True
-classified_stack = True
-green_up = True
+
+img_type = "HLS"     #CESTEM or HLS or SR or TOAR
+aoi = "imperial_hls"
+ndvi_stack = False
+gapfill = False
+change_stack = False
+classified_stack = False
+green_up = False
+make_gif = True
+
 change_name = "green_up"  #green up = 1/harvest = 2
 change_index = 1
-make_gif = True
-vm = True
+
 sub_img = False
 start_y = 0
 y_off = 1000
 start_x = 0
 x_off = 1000
+
 classify_threshold = 20     #ndvi threshold for classification
 time_change = 3             #number of day with change in a direction
-polygonize = 30             #how many files to split into
-noise_days = 5              #average the change to loose noise
+polygonize = 0             #how many files to split into
+noise_days = 4              #average the change to loose noise
 change_days = 7             #time window being considered for classification
+
+
 
 
 '''
@@ -49,7 +44,7 @@ This function gets called in order to download the required files in order to
 edit them in the functions below. When there is a group and the need to polygonize
 the functions brings in two and merges them to have seemless transitions.
 '''
-def get_files(group, extra,type):
+def get_files(group, extra, type):
     if polygonize < 2:
         qgis_file = ask.open_file(type+"_"+img_type+"_"+aoi+".tif")
         return qgis_file
@@ -71,8 +66,9 @@ def get_files(group, extra,type):
         qgis_file = ask.open_file(type+"_"+img_type+"_"+aoi+group0+".tif")
         length = len(qgis_file)
         qgis_file2 = ask.open_file(type+"_"+img_type+"_"+aoi+group1+".tif")
-        for i in range(len(qgis_file2)):
-            qgis_file.append(qgis_file2[i])
+        # for i in range(len(qgis_file2)):
+        #     qgis_file.append(qgis_file2[i])
+        np.append(qgis_file, qgis_file2)
 
         if type == "ndvi" or type == "ndvi_full":
             if extra == 0:
@@ -87,24 +83,24 @@ def get_files(group, extra,type):
             return qgis_file[:(length+1)]
 
 
-def get_file_size(group):
-    if polygonize < 2:
-        qgis_file = ask.open_file("ndvi_"+img_type+"_"+aoi+".tif")
-        return len(qgis_file)
-    else:
-        if group >= 10:
-            group0 = str(group)
-        else:
-            group0 = "0"+str(group)
-        qgis_file = ask.open_file("ndvi_CESTEM_"+aoi+group0+".tif")
-        return len(qgis_file)
+# def get_file_size(group):
+#     if polygonize < 2:
+#         qgis_file = ask.open_file("ndvi_"+img_type+"_"+aoi+".tif")
+#         return len(qgis_file)
+#     else:
+#         if group >= 10:
+#             group0 = str(group)
+#         else:
+#             group0 = "0"+str(group)
+#         qgis_file = ask.open_file("ndvi_CESTEM_"+aoi+group0+".tif")
+#         return len(qgis_file)
 
 
 def gif_maker(match,type):
-    if match != 'ndvi_full':
-        dates = ask.get_dates(bucket, date, "_cestem_sr_gapfree3_imperial.tif", vm)
+    if type == 'ndvi_full':
+        dates = ask.get_dates('CESTEM')
     else:
-        dates = ask.get_dates(bucket, date, match, vm)
+        dates = ask.get_dates(img_type)
     dates.sort()
     img_name = type+'_'+img_type+'_'+aoi
     gif.main(img_name, type, dates, aoi, polygonize)
@@ -158,11 +154,14 @@ def save(array, qgis_file, group, file_type):
         x_pixels,
         y_pixels,
         len(array),
-        gdal.GDT_UInt16)
+        gdal.GDT_Float32)
 
     dataset.SetGeoTransform(old_ref.GetGeoTransform())
     dataset.SetProjection(old_ref.GetProjection())
+    for i in range(len(array)):
+        dataset.GetRasterBand(i+1).WriteArray(array[i])
 
+    dataset.FlushCache()
 
 '''
 This is the function that actually calls all of the classifying functions Given
@@ -277,7 +276,11 @@ def change_classifying(product_file,group):
         shape = np.zeros(ask.get_shape(product_file))
 
     change_stack = get_files(group, 0, 'change')
-    ndvi_stack = get_files(group, 1, 'ndvi_full')
+
+    if img_type == 'CESTEM':
+        ndvi_stack = get_files(group, 1, 'ndvi')
+    else:
+        ndvi_stack = get_files(group, 1, 'ndvi_full')
     print('change '+str(group)+' file has been brought in')
     print(str(len(change_stack))+" files to calculate change")
 
@@ -288,7 +291,6 @@ def change_classifying(product_file,group):
             old_class = change_stack[file_num-change_days]
         else:
             old_class = get_old(group-1, "classify")
-        print(file_num-(change_days-1))
         change_stack[file_num-(change_days-1)] = classed(change_stack, ndvi_stack[(file_num-(change_days-1))+noise_days], file_num, old_class)
 
         process = psutil.Process(os.getpid())
@@ -306,16 +308,16 @@ def ndvi_gapfill(cestem_dates, hls_dates, product_file, group, old_gapfill):
     #     qgis_file.subwindow(start_y,start_x,y_off,x_off)
 
     hls_stack = get_files(group, 2, 'ndvi')
-    cestem_num = get_file_size(group)
     print('hls file '+str(group)+' has been brought in')
 
     full_stack = []
+    print(hls_dates)
     for file_num in range(1+group*len(hls_stack),group*len(hls_stack)+len(hls_stack)):
         gap = 0
         missing_days = 0
 
-        print('hls_len'+str(len(hls_dates)))
-        print('cestem_len'+str(len(cestem_dates)))
+        print('hls_len '+str(len(hls_dates)))
+        print('cestem_len '+str(len(cestem_dates)))
         print(cestem_dates[file_num-1+gap])
         while hls_dates[file_num-1] != cestem_dates[file_num-1+gap]:
             gap = gap+1
@@ -352,7 +354,10 @@ def change_stacking(product_file,group):
     #
 
 
-    img_stack = get_files(group, 0, 'ndvi_full')
+    if img_type == 'CESTEM':
+        img_stack = get_files(group, 0, 'ndvi')
+    else:
+        img_stack = get_files(group, 0, 'ndvi_full')
     print('ndvi file '+str(group)+' has been brought in')
     print(len(img_stack))
     for file_num in range(noise_days, len(img_stack)):
@@ -392,7 +397,7 @@ def ndvi_stacking(files,group, old_ndvi, cestem_files):
                 print("near memory limit: "+ str(process.memory_percent()))
 
 
-        save(stack, file[0], group, "ndvi")
+        save(stack, files[0], group, "ndvi")
 
     else:
         stack = []
@@ -408,7 +413,7 @@ def ndvi_stacking(files,group, old_ndvi, cestem_files):
             if process.memory_percent() > 65:
                 print("near memory limit: "+ str(process.memory_percent()))
 
-        save(stack, file[0],group,"ndvi")
+        save(stack, files[0],group,"ndvi")
 
     return old_ndvi
 
@@ -417,35 +422,37 @@ This function takes in all of the files from a particular bucket and creates a
 list of them. It only returns the files that fall within the perameters interested
 in.
 '''
-def get_ndvi_files(match):
-    if match == "30_%_imperial_1.tif":
-        file_names = []
-        file_names1 = ask.get_list(bucket, date, "%_L"+match, vm)
-        file_names2 = ask.get_list(bucket, date, "%_S"+match, vm)
-        file_names2.sort()
-        file_names1.sort()
-        for file in file_names2:
-            file_names1.append(file)
-        for num in range(1,len(file_names1)):
-            if file_names1[num][13:21] != file_names1[num-1][13:21]:
-                file_names.append(file_names1[num])
+def get_ndvi_files(match, ndvi_img):
+    path = '../'+ ndvi_img
+    file_names = []
+    file_names_dup = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
 
+    # file_names1 = ask.get_list(bucket, date, "%_L"+match, vm)
+    # file_names2 = ask.get_list(bucket, date, "%_S"+match, vm)
+    file_names_dup.sort()
+    if ndvi_img == "HLS":
+        for num in range(1,len(file_names_dup)):
+            if file_names_dup[num][13:21] != file_names_dup[num-1][13:21]:
+                if file_names_dup[num][-4:] == ".tif":
+                    file_names.append('../'+ ndvi_img+'/'+file_names_dup[num])
     else:
-        file_names = ask.get_list(bucket, date, match, vm)
+        for file in file_names_dup:
+            file_names.append('../'+ ndvi_img+'/'+file)
 
 
-    print("aquiring " + str(len(file_names)) + " files")
-    files = []
 
-    for file in file_names:
-        if os.path.isfile("/tmp/pl_storage_cache/"+bucket+"."+file):
-            print(file +" is already downloaded")
-            files.append("/tmp/pl_storage_cache/"+bucket+"."+file)
-        else:
-            print("aquiring: " +file)
-            product_file=storage.get_scene_file(None,bucket,file,null_if_missing=False,refresh_time=600)
-            files.append(product_file)
-    return files
+    # print("aquiring " + str(len(file_names)) + " files")
+    # files = []
+    #
+    # for file in file_names:
+    #     if os.path.isfile("/tmp/pl_storage_cache/"+bucket+"."+file):
+    #         print(file +" is already downloaded")
+    #         files.append("/tmp/pl_storage_cache/"+bucket+"."+file)
+    #     else:
+    #         print("aquiring: " +file)
+    #         product_file=storage.get_scene_file(None,bucket,file,null_if_missing=False,refresh_time=600)
+    #         files.append(product_file)
+    return file_names
 
 
 '''
@@ -458,15 +465,18 @@ def read_and_save(match):
     os.chdir(aoi)
     start_time = time.time()
 
+    #hardcoded as we cant access buckets
+    product_file =  '../'+img_type+"/20180101_S30_20180101_imperial.tif"
+
     if ndvi_stack == True:
         if img_type == "CESTEM":
-            files = get_ndvi_files(match)
+            files = get_ndvi_files(match, img_type)
             files.sort()
             cestem_files = files
         else:
-            files = get_ndvi_files(match)
+            files = get_ndvi_files(match, img_type)
             files.sort()
-            cestem_files = get_ndvi_files(CESTEM_match)
+            cestem_files = get_ndvi_files(CESTEM_match, "CESTEM")
             cestem_files.sort()
 
         qgis_file = ask.get_file_meta(product_file)
@@ -477,34 +487,30 @@ def read_and_save(match):
 
         old_ndvi = shape
 
-
-
-
         if polygonize < 2:
             group = 0
             print("ndvi for one file")
-            old_ndvi = ndvi_stacking(files,group, old_ndvi, cestem_files)
+            old_ndvi = ndvi_stacking(files, group, old_ndvi, cestem_files)
 
         else:
             for group in range(polygonize):
                 print("ndvi group: "+str(group))
-                old_ndvi = ndvi_stacking(files,group, old_ndvi, cestem_files)
+                old_ndvi = ndvi_stacking(files, group, old_ndvi, cestem_files)
 
-        if make_gif == True:
-            print(gif_maker(match,'ndvi'))
+    if make_gif == True:
+        print(gif_maker(match,'ndvi'))
 
-    if match == "30_%_imperial_1.tif":
-        file_names = ask.get_list(bucket, date, "%_L"+match, vm)
-    else:
-        file_names = ask.get_list(bucket, date, match, vm)
+    # if match == "30_%_imperial_1.tif":
+    #     file_names = ask.get_list(bucket, date, "%_L"+match, vm)
+    # else:
+    #     file_names = ask.get_list(bucket, date, match, vm)
 
-    #hardcoded as we cant access buckets
-    product_file =  "ndvi_CESTEM_imperial_large00.tif"
+
 
 
     if gapfill == True:
-        hls_dates = ask.get_dates(bucket, date, match, vm)
-        cestem_dates = ask.get_dates(bucket, date, CESTEM_match, vm)
+        hls_dates = ask.get_dates(img_type)
+        cestem_dates = ask.get_dates('CESTEM')
         hls_dates.sort()
         cestem_dates.sort()
         old_gapfill = np.zeros(ask.get_shape(product_file))
@@ -518,8 +524,8 @@ def read_and_save(match):
                 print("gapfilling group: "+str(group))
                 old_gapfill = ndvi_gapfill(cestem_dates, hls_dates, product_file, group, old_gapfill)
 
-        if make_gif == True:
-            print(gif_maker(match,'ndvi_full'))
+    if make_gif == True:
+        print(gif_maker(match,'ndvi_full'))
 
     #Create a max ndvi function
 
@@ -574,4 +580,27 @@ def read_and_save(match):
     print('------ The process took '+ str(((time.time() - start_time)/60))+' minutes ------' )
 
 
-read_and_save(SR_match)
+
+'''
+For collecting NDVI though planets dataframe
+'''
+date = '2018*'
+TOAR_match = '_3B_AnalyticMS_TOAR_imperial.tif'
+SR_match = '_3B_AnalyticMS_SR_imperial.tif'
+HLS_match = '30_*_imperial.tif'
+CESTEM_match = '_cestem_sr_gapfree3_imperial.tif'
+bucket = 'octave_study'
+list_dump = "scene_list.txt"
+vm = True
+
+if img_type == "CESTEM":
+    read_and_save(CESTEM_match)
+if img_type == "HLS":
+    read_and_save(HLS_match)
+if img_type == "SR":
+    read_and_save(SR_match)
+if img_type == "TOAR":
+    read_and_save(TOAR_match)
+
+
+
